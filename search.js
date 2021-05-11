@@ -1,6 +1,9 @@
 const needle = require("needle");
 const persistence_storage = require('node-persist');
 const dotenv = require("dotenv");
+const chalk = require("chalk");
+const async = require("async");
+
 
 let jwt = require('jwt-simple');
 
@@ -15,7 +18,10 @@ const vaccine_type = process.env['type'];
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
-        console.log(cachedToken);
+        if (cachedToken === undefined) {
+            console.log("Token Expired. Call OTP Flow... node otp.js");
+            process.exit(0);
+        }
         const expires_in = Math.floor(cachedToken.ttl / 1000) - Math.floor(new Date().getTime() / 1000);
         jwtCache.set('jwt_' + mobile_number, cachedToken.value, expires_in);
     });
@@ -28,7 +34,7 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
 }).then(async () => {
     console.log('jwt_' + mobile_number + " : " + vaccine_type);
     const cachedToken = await persistence_storage.get('jwt_' + mobile_number);
-    if (!cachedToken) {
+    if (cachedToken === undefined) {
         console.log("Token Expired. Call OTP Flow... node otp.js");
         process.exit(0);
     }
@@ -44,46 +50,57 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
         headers: {'authorization': 'Bearer ' + cachedToken.value, accept: 'application/json'}
     }
 
-
-    await needle.get('https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByDistrict?district_id=571&date=11-05-2021', options, function (err, resp) {
-        const responseBody = resp.body;
-        var itemCounter = 1;
-        if (responseBody.hasOwnProperty("centers")) {
-            responseBody.centers.forEach(function (center) {
-                // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
-                const {fee_type} = center;
-                if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
-                    center.sessions.forEach(function (session) {
-                        if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] > 0) {
-                            // console.log(session);
-                            console.log(itemCounter++ + ") " + session.date + " - " + session.vaccine + " - " + center.name + " - " + center.block_name + " : [" + session.available_capacity + "]");
-                        }
-                    });
-                    center.sessions.forEach(function (session) {
-                        if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] === 0) {
-                            // console.log(session);
-                            console.log("xx) " + session.date + " - " + session.vaccine + " - " + center.name + " - " + center.block_name + " : [" + session.available_capacity + "]");
-                        }
-                    })
-
+    async.parallel({
+        centers: function (callback) {
+            needle.get('https://cdn-api.co-vin.in/api/v2/appointment/sessions/calendarByDistrict?district_id=571&date=11-05-2021', options, function (err, resp) {
+                const responseBody = resp.body;
+                if (responseBody.hasOwnProperty("centers")) {
+                    callback(null, responseBody.centers);
+                } else {
+                    callback(null, []);
                 }
             })
+        },
+        beneficiaries: function (callback) {
+            needle.get('https://cdn-api.co-vin.in/api/v2/appointment/beneficiaries', options, function (err, resp) {
+                const responseBody = resp.body;
+
+                if (responseBody.hasOwnProperty("beneficiaries")) {
+                    callback(null, responseBody.beneficiaries);
+                } else {
+                    callback(null, []);
+                }
+            });
         }
-    });
+    }, function (err, results) {
+        var itemCounter = 1;
+        results.centers.forEach(function (center) {
+            // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
+            const {fee_type} = center;
+            if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
+                center.sessions.forEach(function (session) {
+                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] > 0) {
+                        console.log(chalk.bold(itemCounter++ + ") " + session.date + " - " + session.vaccine + " - " + center.name + " - " + center.block_name + " : [" + session.available_capacity + "]"));
+                    }
+                });
+                center.sessions.forEach(function (session) {
+                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] === 0) {
+                        console.log(chalk.grey(itemCounter++ + "xx) " + session.date + " - " + session.vaccine + " - " + center.name + " - " + center.block_name + " : [" + session.available_capacity + "]"));
+                    }
+                })
+            }
+        });
 
-
-    await needle.get('https://cdn-api.co-vin.in/api/v2/appointment/beneficiaries', options, function (err, resp) {
-        const responseBody = resp.body;
         var personCounter = 1;
-        if (responseBody.hasOwnProperty("beneficiaries")) {
-            console.log("Booking for : ");
-            responseBody.beneficiaries.forEach(function (beneficiary) {
-                console.log(personCounter++ + ") " + beneficiary.name);
-            })
-            console.log("all) As Group");
-        }
+        console.log("Booking for : ");
+        results.beneficiaries.forEach(function (beneficiary) {
+            console.log(personCounter++ + ") " + beneficiary.name);
+        })
+        console.log("all) As Group");
 
+
+        // console.log(results);
+        // results is now equals to: {one: 1, two: 2}
     });
-
 
 });
