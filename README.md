@@ -17,6 +17,6 @@ node otp.js
 
 ### Search Availability
 ```shell
-node search.js
+node booking.js
 ```
  
