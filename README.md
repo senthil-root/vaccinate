@@ -1,4 +1,4 @@
-# cowintn
+# Vaccinate
 
 ## Create .env with secret and mobile number
 
