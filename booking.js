@@ -1,32 +1,32 @@
-const needle = require("needle");
-const prompt = require('prompt');
+const needle              = require("needle");
+const prompt              = require('prompt');
 const persistence_storage = require('node-persist');
-const dotenv = require("dotenv");
-const chalk = require("chalk");
-const async = require("async");
-const HashMap = require('hashmap');
-const fs = require('fs-extra')
-const sharp = require('sharp');
-const open = require('open');
-var format = require('date-format');
-const spawn = require('cross-spawn');
+const dotenv              = require("dotenv");
+const chalk               = require("chalk");
+const async               = require("async");
+const HashMap             = require('hashmap');
+const fs                  = require('fs-extra')
+const sharp               = require('sharp');
+const open                = require('open');
+var format                = require('date-format');
+const spawn               = require('cross-spawn');
 
 
-const sessionsMap = new HashMap();
+const sessionsMap      = new HashMap();
 const beneficiariesMap = new HashMap();
 
 let jwt = require('jwt-simple');
 
 const NodeCache = require("node-cache");
-const jwtCache = new NodeCache({useClones: false});
+const jwtCache  = new NodeCache({useClones: false});
 
 let onLoad = true;
 dotenv.config()
 
-const baseUrl = 'https://cdn-api.co-vin.in/api/v2';
+const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
 const mobile_number = Number(process.env['mobile']);
-const vaccine_type = process.env['type'];
-const district = Number(process.env['district']);
+const vaccine_type  = process.env['type'];
+const district      = Number(process.env['district']);
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
@@ -40,7 +40,10 @@ jwtCache.on("flush", function () {
 });
 
 
-persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
+persistence_storage.init({
+    logging: false,
+    dir    : './.cache/'
+}).then(value => {
     jwtCache.flushAll();
     onLoad = false;
 }).then(async () => {
@@ -51,30 +54,30 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
         process.exit(0);
     }
     console.log(cachedToken.value);
-    let decodedToken = jwt.decode(cachedToken.value, '', 'HS256');
+    let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
     const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
     console.log(JSON.stringify(decodedToken, null, 4));
     console.log(`expires in ${expirySeconds} seconds`);
 
     var options = {
         headers: {
-            authorization: 'Bearer ' + cachedToken.value,
-            accept: 'application/json',
-            authority: 'cdn-api.co-vin.in',
-            origin: 'https://selfregistration.cowin.gov.in',
-            referer: 'https://selfregistration.cowin.gov.in/',
-            'user-agent': 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+            authorization : 'Bearer ' + cachedToken.value,
+            accept        : 'application/json',
+            authority     : 'cdn-api.co-vin.in',
+            origin        : 'https://selfregistration.cowin.gov.in',
+            referer       : 'https://selfregistration.cowin.gov.in/',
+            'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
             'content-type': 'application/json'
         }
     }
 
     var postOptions = {
         headers: {
-            authorization: 'Bearer ' + cachedToken.value,
-            accept: '*/*',
-            origin: 'https://selfregistration.cowin.gov.in',
-            referer: 'https://selfregistration.cowin.gov.in/',
-            'user-agent': 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+            authorization : 'Bearer ' + cachedToken.value,
+            accept        : '*/*',
+            origin        : 'https://selfregistration.cowin.gov.in',
+            referer       : 'https://selfregistration.cowin.gov.in/',
+            'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
             'content-type': 'application/json'
         }
     }
@@ -82,7 +85,7 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
     var availabilty = true;
 
     async.parallel({
-        centers: function (callback) {
+        centers      : function (callback) {
             const currentDate = format('dd-MM-yyyy', new Date());
             needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, options, function (err, resp) {
                 const responseBody = resp.body;
@@ -109,7 +112,7 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
         var itemCounter = 1;
         results.centers.forEach(function (center) {
             // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
-            const {fee_type} = center;
+            const {fee_type}  = center;
             const {center_id} = center;
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
                 center.sessions.forEach(function (session) {
@@ -139,15 +142,15 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
             })
             console.log("all) As Group");
 
-            var schema = {
+            var schema     = {
                 properties: {
-                    selectCenter: {
+                    selectCenter       : {
                         description: 'Enter Session to choose',
-                        required: true
+                        required   : true
                     },
                     selectBeneficiaries: {
                         description: 'Enter Beneficiaries to select',
-                        required: true
+                        required   : true
                     }
                 }
             };
@@ -155,11 +158,11 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
                 properties: {
                     selectSlot: {
                         description: 'Enter Slot to choose',
-                        required: true
+                        required   : true
                     },
-                    captcha: {
+                    captcha   : {
                         description: 'Enter Captcha',
-                        required: true
+                        required   : true
                     }
                 }
             };
@@ -167,12 +170,12 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
             let promise = prompt.get(schema, function (err, result) {
                 console.log(err);
 
-                const beneficiaries = beneficiariesMap.get(result.selectBeneficiaries);
+                const beneficiaries   = beneficiariesMap.get(result.selectBeneficiaries);
                 const sessionSelected = sessionsMap.get(result.selectCenter);
                 console.log(JSON.stringify(sessionSelected.slots));
                 needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', options, function (err, resp) {
                     const responseBody = resp.body;
-                    const file = './capcha.svg';
+                    const file         = './capcha.svg';
                     fs.outputFile(file, responseBody.captcha, err => {
                         sharp('./capcha.svg')
                             .flatten({background: '#CCCCCC'})
@@ -197,12 +200,12 @@ persistence_storage.init({logging: false, dir: './.cache/'}).then(value => {
                                         selectedSlot = sessionSelected.slots[sessionSelected.slots.length - 1];
                                     }
                                     var payload = {
-                                        center_id: sessionSelected.center_id,
-                                        session_id: sessionSelected.session_id,
+                                        center_id    : sessionSelected.center_id,
+                                        session_id   : sessionSelected.session_id,
                                         beneficiaries: [],
-                                        slot: selectedSlot,
-                                        captcha: resultSlot.captcha,
-                                        dose: 1
+                                        slot         : selectedSlot,
+                                        captcha      : resultSlot.captcha,
+                                        dose         : 1
                                     }
 
                                     if (result.selectBeneficiaries === 'all' || result.selectBeneficiaries === 'a') {
