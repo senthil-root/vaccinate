@@ -128,6 +128,16 @@ persistence_storage.init({
             const {fee_type}  = center;
             const {center_id} = center;
             const {name}      = center;
+
+            // if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
+            //     console.log(center.name + ' -- ' + center.fee_type);
+            //     center.sessions.forEach(function (session) {
+            //         if (session["vaccine"] !== vaccine_type) {
+            //             console.log(JSON.stringify(center, null, 2));
+            //         }
+            //     });
+            // }
+
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
                 districts.add(center.district_name);
                 center.sessions.forEach(function (session) {
@@ -162,10 +172,10 @@ persistence_storage.init({
 
         console.log(`Centers Found      : ${chalk.blueBright(chalk.bold(results.centers.length))} in ${Array.from(districts).join(',')}`);
         console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
-        console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength, ' ')} : ${Array.from(dates).sort().join('  |  ')}  | `)));
+        console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength + 1, ' ')}  : ${Array.from(dates).sort().join('  │  ')}  │`)));
         itemCounter = 1;
         Array.from(centers).sort().forEach(function (center) {
-            let messageItem = chalk.bgBlueBright(chalk.bold(center.padStart(maxcharLength, ' ') + '  '));
+            let messageItem = chalk.bgBlueBright(chalk.bold( center.padStart(maxcharLength + 1, ' ') + '   '));
             Array.from(dates).sort().forEach(function (session_date) {
                 const sessionItem = sessionsMap.get(center + '_' + session_date);
                 if (sessionItem !== undefined) {
@@ -185,10 +195,11 @@ persistence_storage.init({
                 } else {
                     messageItem += ' '.padStart(12, ' ');
                 }
-                messageItem += chalk.bold(' | ');
+                messageItem += chalk.bold(' │ ');
             });
             console.log((messageItem));
         });
+        console.log(chalk.bgBlackBright(chalk.bold(`${' '.padStart(maxcharLength + 1, ' ')}    ${Array.from(dates).sort().join('  │  ')}  │`)));
 
         if (availabilty === true) {
             var personCounter = 1;
