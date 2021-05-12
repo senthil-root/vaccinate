@@ -26,4 +26,4 @@ node booking.js <COVAXIN|COVISHIELD>
 
 MIT
 
-**Free Software, Hell Yeah!**
+**Free and Open Source Software, Yeah!**
