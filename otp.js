@@ -79,13 +79,12 @@ if (!jwtCache.has('jwt_' + mobile_number)) {
             const txnId = resp.body.txnId;
             prompt.start();
             prompt.get(schema, function (err, result) {
-                console.log('Command-line input received:');
+
                 let opthash = hash.sha256().update(result.otp).digest('hex')
                 let data    = {
                     "otp"  : opthash,
                     "txnId": txnId
                 };
-                console.log('Command-line input received:' + JSON.stringify(data));
 
                 needle('post', 'https://cdn-api.co-vin.in/api/v2/auth/validateMobileOtp', data, {json: true})
                     .then(function (resp) {

@@ -8,25 +8,47 @@ const HashMap             = require('hashmap');
 const fs                  = require('fs-extra')
 const sharp               = require('sharp');
 const open                = require('open');
-var format                = require('date-format');
+const format              = require('date-format');
 const spawn               = require('cross-spawn');
+const jwt                 = require('jwt-simple');
 
+dotenv.config()
 
 const sessionsMap      = new HashMap();
 const beneficiariesMap = new HashMap();
+const NodeCache        = require("node-cache");
+const jwtCache         = new NodeCache({useClones: false});
+const baseUrl          = 'https://cdn-api.co-vin.in/api/v2';
+const mobile_number    = Number(process.env['mobile']);
+const vaccine_type     = process.env['type'];
+const district         = Number(process.env['district']);
 
-let jwt = require('jwt-simple');
+let availabilty = true;
+let onLoad      = true;
 
-const NodeCache = require("node-cache");
-const jwtCache  = new NodeCache({useClones: false});
+let getRequestOptions = {
+    headers: {
+        authorization : 'Bearer <JWT>',
+        accept        : 'application/json',
+        authority     : 'cdn-api.co-vin.in',
+        origin        : 'https://selfregistration.cowin.gov.in',
+        referer       : 'https://selfregistration.cowin.gov.in/',
+        'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+        'content-type': 'application/json'
+    }
+}
 
-let onLoad = true;
-dotenv.config()
-
-const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
-const mobile_number = Number(process.env['mobile']);
-const vaccine_type  = process.env['type'];
-const district      = Number(process.env['district']);
+let postRequestOptions = {
+    headers: {
+        authorization : 'Bearer <JWT>',
+        accept        : '*/*',
+        authority     : 'cdn-api.co-vin.in',
+        origin        : 'https://selfregistration.cowin.gov.in',
+        referer       : 'https://selfregistration.cowin.gov.in/',
+        'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+        'content-type': 'application/json'
+    }
+}
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
@@ -40,46 +62,69 @@ jwtCache.on("flush", function () {
 });
 
 async function init() {
-    console.log('jwt_' + mobile_number + " : " + vaccine_type);
-    return persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
+    return await persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
         if (cachedToken === undefined) {
             console.log("Token Expired. Call OTP Flow... node otp.js");
             process.exit(0);
+        } else {
+            let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
+            const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
+            console.log(`Token : Expires in ${expirySeconds} seconds`);
+            if (expirySeconds < 0) {
+                console.log("Token Expired. Call OTP Flow... node otp.js");
+                process.exit(0);
+            }
+            return cachedToken.value;
         }
-        console.log(cachedToken.value);
-        let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
-        const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
-        console.log(JSON.stringify(decodedToken, null, 4));
-        console.log(`expires in ${expirySeconds} seconds`);
-        return decodedToken;
     });
 }
 
+async function searchSlots(district) {
+    const currentDate = format('dd-MM-yyyy', new Date());
 
-var options = {
-    headers: {
-        'authorization': 'Bearer ' + cachedToken.value,
-        accept         : 'application/json'
-    }
+    needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, getRequestOptions, function (err, resp) {
+        const responseBody = resp.body;
+        if (responseBody.hasOwnProperty("centers")) {
+            console.log(responseBody.centers.length + " Centers Found ");
+            return responseBody.centers
+        } else {
+            return [];
+        }
+    })
 }
 
-var postOptions = {
-    headers: {
-        'authorization': 'Bearer ' + cachedToken.value,
-        accept         : '*/*'
-    }
-}
-var availabilty = true;
-
-await persistence_storage.init({
+persistence_storage.init({
     logging: false,
     dir    : './.cache/'
-})
-    .then(value => {
-        jwtCache.flushAll();
-        onLoad = false;
+}).then(async (value) => {
+    jwtCache.flushAll();
+    onLoad                                   = false;
+    const Token                              = await init();
+    getRequestOptions.headers.authorization  = `Bearer ${Token}`;
+    postRequestOptions.headers.authorization = `Bearer ${Token}`;
+    console.log(Token);
+    let itemCounter = 1;
+    const centers   = await searchSlots(district);
+    centers.forEach(center => {
+        // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
+        const {fee_type}  = center;
+        const {center_id} = center;
+        if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
+            center.sessions.forEach(function (session) {
+                if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] > 0) {
+                    console.log(chalk.bold(`  ${itemCounter}  )${session.date} - ${session.vaccine} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
+                    sessionsMap.set(itemCounter.toString(), {...session, ...{center_id: center_id}});
+                    itemCounter++;
+                    availabilty = true;
+                }
+            });
+            center.sessions.forEach(function (session) {
+                if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] === 0) {
+                    console.log(chalk.grey(`x ${itemCounter} x)${session.date} - ${session.vaccine} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
+                    sessionsMap.set(itemCounter.toString(), {...session, ...{center_id: center_id}});
+                    itemCounter++;
+                }
+            })
+        }
     });
-
-await init().then(decodedToken => {
-    console.log(decodedToken);
 });
