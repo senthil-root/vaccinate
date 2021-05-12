@@ -16,6 +16,7 @@ const sessionsMap      = new HashMap();
 const beneficiariesMap = new HashMap();
 const districts        = new Set();
 const dates            = new Set();
+const centers          = new Set();
 
 let jwt = require('jwt-simple');
 
@@ -67,7 +68,7 @@ persistence_storage.init({
 
     let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
     const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
-    console.log('Token Expired in   : ' + chalk.blueBright(chalk.bold(expirySeconds)) + ' seconds');
+    console.log('Token Expires in   : ' + chalk.blueBright(chalk.bold(expirySeconds)) + ' seconds');
 
     var options = {
         headers: {
@@ -121,47 +122,72 @@ persistence_storage.init({
         var itemCounter      = 1;
         let available        = 0;
         let availableCenters = 0;
+        let maxcharLength    = 0;
         results.centers.forEach(function (center) {
             // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
             const {fee_type}  = center;
             const {center_id} = center;
+            const {name}      = center;
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
+                districts.add(center.district_name);
                 center.sessions.forEach(function (session) {
-                    districts.add(center.district_name);
-                    dates.add(center.district_name);
-                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] > 0) {
-                        available++;
+                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45) {
+                        centers.add(center.name);
+                        dates.add(session["date"]);
+                        sessionsMap.set(center.name + '_' + session.date, {
+                            ...session, ...{
+                                center_id  : center_id,
+                                center_name: name
+                            }
+                        });
+                        if (session["available_capacity"] > 0) available += Number(session["available_capacity"]);
+                        if (maxcharLength < center.name.length) maxcharLength = center.name.length;
                     }
                 });
             }
-        })
+        });
+
+        /*
+        results.centers.forEach(function (center) {
+            const {fee_type} = center;
+            if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
+                center.sessions.forEach(function (session) {
+                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45) {
+                        console.log(chalk.bold(`  ${itemCounter}  )${session.date} - ${session.session_id} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
+                        itemCounter++;
+                    }
+                });
+            }
+        });*/
+
         console.log(`Centers Found      : ${chalk.blueBright(chalk.bold(results.centers.length))} in ${Array.from(districts).join(',')}`);
         console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
+        console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength, ' ')} : ${Array.from(dates).sort().join('  |  ')}  | `)));
+        itemCounter = 1;
+        Array.from(centers).sort().forEach(function (center) {
+            let messageItem = chalk.bgBlueBright(chalk.bold(center.padStart(maxcharLength, ' ') + '  '));
+            Array.from(dates).sort().forEach(function (session_date) {
+                const sessionItem = sessionsMap.get(center + '_' + session_date);
+                if (sessionItem !== undefined) {
+                    // if (sessionItem.available_capacity === 0 && '0c0ccfbc-23f5-4e8d-b83c-09571e527318' !== sessionItem.session_id) {
+                    if (sessionItem.available_capacity === 0) {
+                        messageItem += chalk.dim(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' '));
+                        messageItem += chalk.dim(chalk.underline('booked'.padStart(10, ' ')));
+                    } else {
+                        messageItem += chalk.bold(chalk.green(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' ')));
+                        messageItem += chalk.bold(chalk.green(chalk.underline("100".toString().padStart(10, ' '))));
 
-        results.centers.forEach(function (center) {
-            // $.centers[?(@.fee_type=="Paid")].sessions[?(@.vaccine=="COVISHIELD" && @.min_age_limit>18  && @.available_capacity>0)]
-            const {fee_type}  = center;
-            const {center_id} = center;
-            if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
-                center.sessions.forEach(function (session) {
-                    districts.add(center.district_name);
-                    dates.add(center.district_name);
-                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] > 0) {
-                        console.log(chalk.bold(`  ${itemCounter}  )${session.date} - ${session.vaccine} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
-                        sessionsMap.set(itemCounter.toString(), {...session, ...{center_id: center_id}});
                         if (availableSession === 0) availableSession = itemCounter;
                         availabilty = true;
-                        itemCounter++;
                     }
-                });
-                center.sessions.forEach(function (session) {
-                    if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45 && session["available_capacity"] === 0) {
-                        console.log(chalk.grey(`x ${itemCounter} x)${session.date} - ${session.vaccine} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
-                        sessionsMap.set(itemCounter.toString(), {...session, ...{center_id: center_id}});
-                        itemCounter++;
-                    }
-                })
-            }
+                    sessionsMap.set(itemCounter.toString(), sessionItem);
+                    itemCounter++;
+                } else {
+                    messageItem += ' '.padStart(12, ' ');
+                }
+                messageItem += chalk.bold(' | ');
+            });
+            console.log((messageItem));
         });
 
         if (availabilty === true) {
@@ -183,7 +209,7 @@ persistence_storage.init({
                     selectBeneficiaries: {
                         description: 'Enter Beneficiaries to select',
                         required   : true,
-                        default    : 'a'
+                        default    : '2'
                     }
                 }
             };
@@ -252,6 +278,12 @@ persistence_storage.init({
                                     const result = spawn.sync('catimg', ['./capcha.jpeg'], {stdio: 'inherit'});
                                     prompt.get(schemaCaptcha, function (err, resultCaptcha) {
                                         payload.captcha = resultCaptcha.captcha;
+                                        console.log(JSON.stringify(payload, null, 2));
+
+                                        console.log('Center             : ' + sessionSelected.center_name);
+                                        console.log('Session            : ' + sessionSelected.session_id);
+                                        console.log(`Slot               : ${sessionSelected.date} [${selectedSlot}]`);
+
                                         needle.post(`${baseUrl}/appointment/schedule`, payload, postOptions, function (err, resp, responseBody) {
                                             if (resp.statusCode !== 200) {
                                                 if (responseBody.hasOwnProperty("error")) {
