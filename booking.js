@@ -70,35 +70,32 @@ persistence_storage.init({
     const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
     console.log('Token Expires in   : ' + chalk.blueBright(chalk.bold(expirySeconds)) + ' seconds');
 
-    var options = {
+    var getOptions = {
         headers: {
-            authorization : 'Bearer ' + cachedToken.value,
-            accept        : 'application/json',
-            authority     : 'cdn-api.co-vin.in',
-            origin        : 'https://selfregistration.cowin.gov.in',
-            referer       : 'https://selfregistration.cowin.gov.in/',
-            'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
-            'content-type': 'application/json'
+            'authorization'   : 'Bearer ' + cachedToken.value,
+            'accept'          : 'application/json, text/plain, */*',
+            'origin'          : 'https://selfregistration.cowin.gov.in',
+            'referer'         : 'https://selfregistration.cowin.gov.in/',
+            'user-agent'      : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+            'content-type'    : 'application/json',
+            'pragma'          : 'no-cache',
+            'cache-control'   : 'no-cache',
+            'sec-ch-ua'       : '" Not A;Brand";v="99", "Chromium";v="90", "Google Chrome";v="90"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-fetch-site'  : 'cross-site',
+            'sec-fetch-mode'  : 'cors',
+            'sec-fetch-dest'  : 'empty',
+            'accept-language' : 'en-IN,en;q=0.9,ta-IN;q=0.8,ta;q=0.7,en-GB;q=0.6,en-US;q=0.5.'
         }
     }
 
-    var postOptions = {
-        headers: {
-            authorization : 'Bearer ' + cachedToken.value,
-            accept        : '*/*',
-            authority     : 'cdn-api.co-vin.in',
-            origin        : 'https://selfregistration.cowin.gov.in',
-            referer       : 'https://selfregistration.cowin.gov.in/',
-            'user-agent'  : 'Mozilla/5.0 (X11; Fedora; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
-            'content-type': 'application/json'
-        }
-    }
+    var postOptions = {headers: Object.assign({}, getOptions.headers, {accept: '*/*'})};
 
 
     async.parallel({
         centers      : function (callback) {
             const currentDate = format('dd-MM-yyyy', new Date());
-            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, options, function (err, resp) {
+            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, getOptions, function (err, resp) {
                 const responseBody = resp.body;
                 if (responseBody.hasOwnProperty("centers")) {
                     callback(null, responseBody.centers);
@@ -108,7 +105,7 @@ persistence_storage.init({
             })
         },
         beneficiaries: function (callback) {
-            needle.get(`${baseUrl}/appointment/beneficiaries`, options, function (err, resp) {
+            needle.get(`${baseUrl}/appointment/beneficiaries`, getOptions, function (err, resp) {
                 const responseBody = resp.body;
 
                 if (responseBody.hasOwnProperty("beneficiaries")) {
@@ -157,25 +154,24 @@ persistence_storage.init({
             }
         });
 
-        /*
+
+        console.log(`Centers Found      : ${chalk.blueBright(chalk.bold(results.centers.length))} in ${Array.from(districts).join(',')}`);
+        console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
         results.centers.forEach(function (center) {
             const {fee_type} = center;
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
                 center.sessions.forEach(function (session) {
                     if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45) {
-                        console.log(chalk.bold(`  ${itemCounter}  )${session.date} - ${session.session_id} - ${center.name} - ${center.block_name} : [${session.available_capacity}]`));
+                        console.log(chalk.bold(`${session.date} - ${session.session_id} - [${session.available_capacity.toString().padStart(3, ' ')}] :  ${center.block_name.padEnd(12, ' ')} ${center.name}`));
                         itemCounter++;
                     }
                 });
             }
-        });*/
-
-        console.log(`Centers Found      : ${chalk.blueBright(chalk.bold(results.centers.length))} in ${Array.from(districts).join(',')}`);
-        console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
+        });
         console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength + 1, ' ')}  : ${Array.from(dates).sort().join('  │  ')}  │`)));
         itemCounter = 1;
         Array.from(centers).sort().forEach(function (center) {
-            let messageItem = chalk.bgBlueBright(chalk.bold( center.padStart(maxcharLength + 1, ' ') + '   '));
+            let messageItem = chalk.bgBlueBright(chalk.bold(center.padStart(maxcharLength + 1, ' ') + '   '));
             Array.from(dates).sort().forEach(function (session_date) {
                 const sessionItem = sessionsMap.get(center + '_' + session_date);
                 if (sessionItem !== undefined) {
@@ -201,6 +197,8 @@ persistence_storage.init({
         });
         console.log(chalk.bgBlackBright(chalk.bold(`${' '.padStart(maxcharLength + 1, ' ')}    ${Array.from(dates).sort().join('  │  ')}  │`)));
 
+        // availabilty = true;
+
         if (availabilty === true) {
             var personCounter = 1;
             console.log('Booking for         ');
@@ -220,7 +218,7 @@ persistence_storage.init({
                     selectBeneficiaries: {
                         description: 'Enter Beneficiaries to select',
                         required   : true,
-                        default    : '2'
+                        default    : 'a'
                     }
                 }
             };
@@ -275,15 +273,21 @@ persistence_storage.init({
                         payload.beneficiaries.push(beneficiaries.beneficiary_reference_id);
                     }
 
-                    needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', options, function (err, resp) {
+                    needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', getOptions, function (err, resp) {
                         const responseBody = resp.body;
                         const file         = './capcha.svg';
                         fs.outputFile(file, responseBody.captcha, err => {
                             sharp('./capcha.svg')
-                                .flatten({background: '#CCCCCC'})
-                                .resize({height: 148})
-                                .png()
-                                .jpeg()
+                                .resize({height: 50})
+                                .flatten({background: '#e1e1E1'})
+                                .sharpen()
+                                .normalise()
+                                .negate()
+                                .jpeg({
+                                    quality          : 100,
+                                    chromaSubsampling: '4:4:4'
+                                })
+                                .withMetadata({density: 96})
                                 .toFile("./capcha.jpeg")
                                 .then(function (info) {
                                     const result = spawn.sync('catimg', ['./capcha.jpeg'], {stdio: 'inherit'});
@@ -291,8 +295,8 @@ persistence_storage.init({
                                         payload.captcha = resultCaptcha.captcha;
                                         console.log(JSON.stringify(payload, null, 2));
 
-                                        console.log('Center             : ' + sessionSelected.center_name);
                                         console.log('Session            : ' + sessionSelected.session_id);
+                                        console.log('Center             : ' + sessionSelected.center_name);
                                         console.log(`Slot               : ${sessionSelected.date} [${selectedSlot}]`);
 
                                         needle.post(`${baseUrl}/appointment/schedule`, payload, postOptions, function (err, resp, responseBody) {
