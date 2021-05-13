@@ -10,7 +10,7 @@ const sharp               = require('sharp');
 const open                = require('open');
 var format                = require('date-format');
 const spawn               = require('cross-spawn');
-
+const crypto              = require("crypto");
 
 const sessionsMap      = new HashMap();
 const beneficiariesMap = new HashMap();
@@ -68,7 +68,11 @@ persistence_storage.init({
 
     let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
     const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
-    console.log('Token Expires in   : ' + chalk.blueBright(chalk.bold(expirySeconds)) + ' seconds');
+    if (expirySeconds < 120) {
+        console.log('Token Expires in   : ' + chalk.bgRed(chalk.grey(chalk.bold(`${expirySeconds} seconds`))));
+    } else {
+        console.log('Token Expires in   : ' + chalk.bgBlue(chalk.white(chalk.bold(`${expirySeconds} seconds`))));
+    }
 
     var getOptions = {
         headers: {
@@ -89,13 +93,19 @@ persistence_storage.init({
         }
     }
 
-    var postOptions = {headers: Object.assign({}, getOptions.headers, {accept: '*/*'})};
+    // var postOptions = {headers: Object.assign({}, getOptions.headers, {accept: '*/*'})};
+    var postOptions = {
+        headers: Object.assign({}, getOptions.headers, {accept: 'application/json, text/plain, */*'})
+    };
 
 
     async.parallel({
         centers      : function (callback) {
             const currentDate = format('dd-MM-yyyy', new Date());
-            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, getOptions, function (err, resp) {
+            let options = {
+                headers: Object.assign({}, getOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
+            };
+            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, options, function (err, resp) {
                 const responseBody = resp.body;
                 if (responseBody.hasOwnProperty("centers")) {
                     callback(null, responseBody.centers);
@@ -105,7 +115,10 @@ persistence_storage.init({
             })
         },
         beneficiaries: function (callback) {
-            needle.get(`${baseUrl}/appointment/beneficiaries`, getOptions, function (err, resp) {
+            let options = {
+                headers: Object.assign({}, getOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
+            };
+            needle.get(`${baseUrl}/appointment/beneficiaries`, options, function (err, resp) {
                 const responseBody = resp.body;
 
                 if (responseBody.hasOwnProperty("beneficiaries")) {
@@ -171,7 +184,7 @@ persistence_storage.init({
         console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength + 1, ' ')}  : ${Array.from(dates).sort().join('  │  ')}  │`)));
         itemCounter = 1;
         Array.from(centers).sort().forEach(function (center) {
-            let messageItem = chalk.bgBlueBright(chalk.bold(center.padStart(maxcharLength + 1, ' ') + '   '));
+            let messageItem = chalk.bgBlue(chalk.bold(center.padStart(maxcharLength + 1, ' ') + '   '));
             Array.from(dates).sort().forEach(function (session_date) {
                 const sessionItem = sessionsMap.get(center + '_' + session_date);
                 if (sessionItem !== undefined) {
@@ -273,7 +286,10 @@ persistence_storage.init({
                         payload.beneficiaries.push(beneficiaries.beneficiary_reference_id);
                     }
 
-                    needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', getOptions, function (err, resp) {
+                    let options = {
+                        headers: Object.assign({}, getOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
+                    };
+                    needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', options, function (err, resp) {
                         const responseBody = resp.body;
                         const file         = './capcha.svg';
                         fs.outputFile(file, responseBody.captcha, err => {
@@ -299,17 +315,26 @@ persistence_storage.init({
                                         console.log('Center             : ' + sessionSelected.center_name);
                                         console.log(`Slot               : ${sessionSelected.date} [${selectedSlot}]`);
 
-                                        needle.post(`${baseUrl}/appointment/schedule`, payload, postOptions, function (err, resp, responseBody) {
-                                            if (resp.statusCode !== 200) {
-                                                if (responseBody.hasOwnProperty("error")) {
-                                                    console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody.error))));
+
+                                        needle.head(`${baseUrl}/appointment/schedule`, {
+                                            open_timeout: 5000 // if we're not able to open a connection in 5 seconds, boom.
+                                        }, function (err, resp) {
+
+                                            let post_options = {
+                                                headers: Object.assign({}, postOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
+                                            };
+                                            needle.post(`${baseUrl}/appointment/schedule`, payload, post_options, function (err, resp, responseBody) {
+                                                if (resp.statusCode !== 200) {
+                                                    if (responseBody.hasOwnProperty("error")) {
+                                                        console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody.error))));
+                                                    } else {
+                                                        console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody))));
+                                                    }
                                                 } else {
-                                                    console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody))));
+                                                    console.log('Booking Successful : ' + chalk.greenBright(chalk.bold(JSON.stringify(responseBody))));
                                                 }
-                                            } else {
-                                                console.log('Booking Successful : ' + chalk.greenBright(chalk.bold(JSON.stringify(responseBody))));
-                                            }
-                                        });
+                                            });
+                                        })
                                     });
                                 });
                         });
