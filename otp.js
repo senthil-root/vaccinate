@@ -6,6 +6,8 @@ const NodeCache           = require("node-cache");
 const jwtCache            = new NodeCache({useClones: false});
 const persistence_storage = require('node-persist');
 let jwt                   = require('jwt-simple');
+const CryptoJS            = require("crypto-js");
+var base64                = require('base-64');
 
 let onLoad = true;
 dotenv.config()
@@ -29,8 +31,11 @@ jwtCache.on("flush", function () {
     });
 });
 
-const secret_seed   = process.env['secret'];
 const mobile_number = Number(process.env['mobile']);
+
+const message       = base64.decode('YjVjYWIxNjctNzk3Ny00ZGYxLTgwMjctYTYzYWExNDRmMDRl');
+const secretKey     = base64.decode('Q29XSU5AJCMmKighQCVeJg==');
+const secret_seed   = CryptoJS.AES.encrypt(message, secretKey).toString();
 
 persistence_storage.init({
     logging: false,
@@ -66,6 +71,7 @@ var schema = {
         }
     }
 };
+
 
 if (!jwtCache.has('jwt_' + mobile_number)) {
     let data = {

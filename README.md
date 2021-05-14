@@ -4,7 +4,6 @@
 
 Example
 ```properties
-secret=xxxxxxxx+/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==
 mobile=999999999
 type=COVAXIN
 district=571
