@@ -41,15 +41,12 @@ process.argv.forEach(function (val, index, array) {
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
+        console.log(cachedToken);
         if (cachedToken === undefined) {
             console.log("Token Expired. Call OTP Flow... node otp.js");
             process.exit(0);
         }
         const expires_in = Math.floor(cachedToken.ttl / 1000) - Math.floor(new Date().getTime() / 1000);
-        if (expires_in <= 0) {
-            console.log("Token Expired. Call OTP Flow... node otp.js");
-            process.exit(0);
-        }
         jwtCache.set('jwt_' + mobile_number, cachedToken.value, expires_in);
     });
 });
@@ -72,7 +69,10 @@ persistence_storage.init({
 
     let decodedToken    = jwt.decode(cachedToken.value, '', 'HS256');
     const expirySeconds = decodedToken['exp'] - Math.floor(new Date().getTime() / 1000);
-    if (expirySeconds < 120) {
+    if (expirySeconds < 0) {
+        console.log("Token Expired. Call OTP Flow... node otp.js");
+        process.exit(0);
+    } else if (expirySeconds < 120) {
         console.log('Token Expires in   : ' + chalk.bgRed(chalk.grey(chalk.bold(`${expirySeconds} seconds`))));
     } else {
         console.log('Token Expires in   : ' + chalk.bgBlue(chalk.white(chalk.bold(`${expirySeconds} seconds`))));
