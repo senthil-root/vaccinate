@@ -46,6 +46,10 @@ jwtCache.on("flush", function () {
             process.exit(0);
         }
         const expires_in = Math.floor(cachedToken.ttl / 1000) - Math.floor(new Date().getTime() / 1000);
+        if (expires_in <= 0) {
+            console.log("Token Expired. Call OTP Flow... node otp.js");
+            process.exit(0);
+        }
         jwtCache.set('jwt_' + mobile_number, cachedToken.value, expires_in);
     });
 });
@@ -102,7 +106,7 @@ persistence_storage.init({
     async.parallel({
         centers      : function (callback) {
             const currentDate = format('dd-MM-yyyy', new Date());
-            let options = {
+            let options       = {
                 headers: Object.assign({}, getOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
             };
             needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, options, function (err, resp) {
