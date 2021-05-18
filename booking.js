@@ -32,6 +32,7 @@ const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
 const mobile_number = Number(process.env['mobile']);
 const district      = Number(process.env['district']);
 let vaccine_type    = process.env['type'];
+let dose            = process.env.hasOwnProperty('dose') ? Number(process.env['dose']) : 1;
 
 process.argv.forEach(function (val, index, array) {
     if (index === 2 && (val.toUpperCase() === "COVAXIN" || val.toUpperCase() === "COVISHIELD")) {
@@ -41,7 +42,6 @@ process.argv.forEach(function (val, index, array) {
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
-        console.log(cachedToken);
         if (cachedToken === undefined) {
             console.log("Token Expired. Call OTP Flow... node otp.js");
             process.exit(0);
@@ -61,6 +61,7 @@ persistence_storage.init({
 }).then(async () => {
     console.log('Registered Mobile  : ' + chalk.blueBright(chalk.bold(mobile_number)));
     console.log('Searching  For     : ' + chalk.blueBright(chalk.bold(vaccine_type)));
+    console.log('Booking            : ' + chalk.blueBright(chalk.bold(with_ordinal(dose))) + ' Dose');
     const cachedToken = await persistence_storage.get('jwt_' + mobile_number);
     if (cachedToken === undefined) {
         console.log("Token Expired. Call OTP Flow... node otp.js");
@@ -109,7 +110,7 @@ persistence_storage.init({
             let options       = {
                 headers: Object.assign({}, getOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
             };
-            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}`, options, function (err, resp) {
+            needle.get(`${baseUrl}/appointment/sessions/calendarByDistrict?district_id=${district}&date=${currentDate}&vaccine=${vaccine_type}`, options, function (err, resp) {
                 const responseBody = resp.body;
                 if (responseBody.hasOwnProperty("centers")) {
                     callback(null, responseBody.centers);
@@ -164,7 +165,8 @@ persistence_storage.init({
                                 center_name: name
                             }
                         });
-                        if (session["available_capacity"] > 0) available += Number(session["available_capacity"]);
+                        const availabiltyForDose = dose === 2 ? session.available_capacity_dose2 : session.available_capacity_dose1;
+                        if (availabiltyForDose > 0) available++;
                         if (maxcharLength < center.name.length) maxcharLength = center.name.length;
                     }
                 });
@@ -173,7 +175,12 @@ persistence_storage.init({
 
 
         console.log(`Centers Found      : ${chalk.blueBright(chalk.bold(results.centers.length))} in ${Array.from(districts).join(',')}`);
-        console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
+        if (available > 0) {
+            console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
+        } else {
+            console.log(`Sessions Available : ${chalk.blueBright(chalk.bold(available))} in ${Array.from(districts).join(',')}`);
+
+        }
         results.centers.forEach(function (center) {
             const {fee_type} = center;
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
@@ -193,13 +200,13 @@ persistence_storage.init({
                 const sessionItem = sessionsMap.get(center + '_' + session_date);
                 if (sessionItem !== undefined) {
                     // if (sessionItem.available_capacity === 0 && '0c0ccfbc-23f5-4e8d-b83c-09571e527318' !== sessionItem.session_id) {
-                    if (sessionItem.available_capacity === 0) {
+                    const availabiltyForDose = dose === 2 ? sessionItem.available_capacity_dose2 : sessionItem.available_capacity_dose1;
+                    if (availabiltyForDose === 0) {
                         messageItem += chalk.dim(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' '));
                         messageItem += chalk.dim(chalk.underline('booked'.padStart(10, ' ')));
                     } else {
                         messageItem += chalk.bold(chalk.green(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' ')));
-                        messageItem += chalk.bold(chalk.green(chalk.underline("100".toString().padStart(10, ' '))));
-
+                        messageItem += chalk.bold(chalk.green(chalk.underline(availabiltyForDose.toString().padStart(10, ' '))));
                         if (availableSession === 0) availableSession = itemCounter;
                         availabilty = true;
                     }
@@ -217,6 +224,8 @@ persistence_storage.init({
         // availabilty = true;
 
         if (availabilty === true) {
+
+            console.log('\u0007');
             var personCounter = 1;
             console.log('Booking for         ');
             results.beneficiaries.forEach(function (beneficiary) {
@@ -348,8 +357,20 @@ persistence_storage.init({
                 ;
             });
         }
-
-        // results is now equals to: {one: 1, two: 2}
     });
-
 });
+
+function with_ordinal(value) {
+    const j = value % 10,
+          k = value % 100;
+    if (j === 1 && k !== 11) {
+        return value + "ˢᵀ";
+    }
+    if (j === 2 && k !== 12) {
+        return value + "ᴺᴰ";
+    }
+    if (j === 3 && k !== 13) {
+        return value + "ᴿᴰ";
+    }
+    return value + "ᵀᴴ";
+}
