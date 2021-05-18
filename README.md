@@ -8,6 +8,7 @@ Example
 mobile=999999999
 type=COVAXIN
 district=<district_id>
+dose=1
 ```
 
 ### Get District id from
