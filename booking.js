@@ -18,6 +18,11 @@ const districts        = new Set();
 const dates            = new Set();
 const centers          = new Set();
 
+const searchRegExp  = /\<path d.+?stroke.+?\>/g;
+const replaceWith   = '';
+const searchRegExp2 = /path fill=\".+?\"/g;
+const replaceWith2  = 'path fill="#000"';
+
 let jwt = require('jwt-simple');
 
 const NodeCache = require("node-cache");
@@ -30,13 +35,16 @@ dotenv.config()
 
 const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
 const mobile_number = Number(process.env['mobile']);
-const district      = Number(process.env['district']);
+let district        = Number(process.env['district']);
 let vaccine_type    = process.env['type'];
 let dose            = process.env.hasOwnProperty('dose') ? Number(process.env['dose']) : 1;
 
 process.argv.forEach(function (val, index, array) {
     if (index === 2 && (val.toUpperCase() === "COVAXIN" || val.toUpperCase() === "COVISHIELD")) {
         vaccine_type = val.toUpperCase();
+    }
+    if (index === 3) {
+        district = val;
     }
 });
 
@@ -186,29 +194,35 @@ persistence_storage.init({
             if (fee_type === "Paid" && center.hasOwnProperty("sessions")) {
                 center.sessions.forEach(function (session) {
                     if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45) {
-                        console.log(chalk.bold(`${session.date} - ${session.session_id} - [${session.available_capacity.toString().padStart(3, ' ')}] :  ${center.block_name.padEnd(12, ' ')} ${center.name}`));
+                        const total = session.available_capacity.toString().padStart(3, ' ');
+                        const avl1  = session.available_capacity_dose1.toString().padStart(3, ' ');
+                        const avl2  = session.available_capacity_dose2.toString().padStart(3, ' ');
+                        console.log(chalk.bold(`${session.date} - ${session.session_id} - [${avl1}] [${avl2}] [${total}] :  ${center.block_name.padEnd(12, ' ')} ${center.name}`));
                         itemCounter++;
                     }
                 });
             }
         });
         console.log(chalk.bgBlackBright(chalk.bold(`${'Dates'.padStart(maxcharLength + 1, ' ')}  : ${Array.from(dates).sort().join('  │  ')}  │`)));
-        itemCounter = 1;
+        itemCounter             = 1;
+        const sessionsAvailable = [];
         Array.from(centers).sort().forEach(function (center) {
             let messageItem = chalk.bgBlue(chalk.bold(center.padStart(maxcharLength + 1, ' ') + '   '));
             Array.from(dates).sort().forEach(function (session_date) {
                 const sessionItem = sessionsMap.get(center + '_' + session_date);
                 if (sessionItem !== undefined) {
                     // if (sessionItem.available_capacity === 0 && '0c0ccfbc-23f5-4e8d-b83c-09571e527318' !== sessionItem.session_id) {
-                    const availabiltyForDose = dose === 2 ? sessionItem.available_capacity_dose2 : sessionItem.available_capacity_dose1;
+                    const availabiltyForDose = (Number(dose) === 2) ? Number(sessionItem.available_capacity_dose2) : Number(sessionItem.available_capacity_dose1);
                     if (availabiltyForDose === 0) {
                         messageItem += chalk.dim(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' '));
                         messageItem += chalk.dim(chalk.underline('booked'.padStart(10, ' ')));
+
                     } else {
                         messageItem += chalk.bold(chalk.green(itemCounter.toString().padStart(2, ' ').toString().padEnd(2, ' ')));
                         messageItem += chalk.bold(chalk.green(chalk.underline(availabiltyForDose.toString().padStart(10, ' '))));
                         if (availableSession === 0) availableSession = itemCounter;
                         availabilty = true;
+                        sessionsAvailable.push(sessionItem);
                     }
                     sessionsMap.set(itemCounter.toString(), sessionItem);
                     itemCounter++;
@@ -305,7 +319,8 @@ persistence_storage.init({
                     needle.post(`${baseUrl}/auth/getRecaptcha`, '{}', options, function (err, resp) {
                         const responseBody = resp.body;
                         const file         = './capcha.svg';
-                        fs.outputFile(file, responseBody.captcha, err => {
+                        const svgData      = responseBody.captcha.replace(searchRegExp, replaceWith).replace(searchRegExp2, replaceWith2);
+                        fs.outputFile(file, svgData, err => {
                             sharp('./capcha.svg')
                                 .resize({height: 50})
                                 .flatten({background: '#e1e1E1'})
@@ -313,13 +328,12 @@ persistence_storage.init({
                                 .normalise()
                                 .negate()
                                 .jpeg({
-                                    quality          : 100,
-                                    chromaSubsampling: '4:4:4'
+                                    quality: 100
                                 })
                                 .withMetadata({density: 96})
                                 .toFile("./capcha.jpeg")
                                 .then(function (info) {
-                                    const result = spawn.sync('catimg', ['./capcha.jpeg'], {stdio: 'inherit'});
+                                    const result = spawn.sync('catimg', ['-H', '50', './capcha.jpeg'], {stdio: 'inherit'});
                                     prompt.get(schemaCaptcha, function (err, resultCaptcha) {
                                         payload.captcha = resultCaptcha.captcha;
                                         console.log(JSON.stringify(payload, null, 2));
