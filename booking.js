@@ -11,6 +11,9 @@ const open                = require('open');
 var format                = require('date-format');
 const spawn               = require('cross-spawn');
 const crypto              = require("crypto");
+const Jimp                = require('jimp');
+var looksSame             = require('looks-same');
+
 
 const sessionsMap      = new HashMap();
 const beneficiariesMap = new HashMap();
@@ -22,6 +25,7 @@ const searchRegExp  = /\<path d.+?stroke.+?\>/g;
 const replaceWith   = '';
 const searchRegExp2 = /path fill=\".+?\"/g;
 const replaceWith2  = 'path fill="#000"';
+const lettersRegExp = /\<path fill.+?\>/g
 
 let jwt = require('jwt-simple');
 
@@ -58,6 +62,65 @@ jwtCache.on("flush", function () {
         jwtCache.set('jwt_' + mobile_number, cachedToken.value, expires_in);
     });
 });
+
+
+function SaveCaptchaData(svgData) {
+    const dir = './letters/'
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir);
+    }
+
+    const lettersFound = svgData.match(lettersRegExp);
+    console.log(lettersFound.length);
+
+
+    for (let pos = 0; pos < lettersFound.length; pos++) {
+        const letter    = lettersFound[pos];
+        const letterSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="50" viewBox="0,0,150,50">${letter}</svg>`;
+        fs.writeFile(`${dir}letter${pos}.svg`, letterSVG, function (err) {
+            if (err) throw err;
+            sharp(`${dir}letter${pos}.svg`)
+                .resize({
+                    width   : 150,
+                    height  : 150,
+                    fit     : sharp.fit.cover,
+                    position: sharp.strategy.entropy
+                })
+                .flatten({background: '#e1e1E1'})
+                .sharpen()
+                .normalise()
+                .negate()
+                .png().toFile(`${dir}segment${pos}.png`)
+                .then(function (info) {
+                    console.log(info);
+                    fs.unlinkSync(`${dir}letter${pos}.svg`);
+                });
+        });
+    }
+    // looksSame(`${dir}Q.png`, `${dir}Q_1.png`, {
+    //     tolerance            : 5,
+    //     ignoreAntialiasing   : true,
+    //     antialiasingTolerance: 10
+    // }, function (error, output) {
+    //     // equal will be true, if images looks the same
+    //     console.error(error)
+    //     console.log(chalk.green(JSON.stringify(output, null, 2)));
+    // });
+
+    // looksSame.createDiff({
+    //     reference            : `${dir}Q.png`,
+    //     current              : `${dir}Q_1.png`,
+    //     diff                 : `${dir}Q_Diff.png`,
+    //     highlightColor       : '#ff00ff', // color to highlight the differences
+    //     strict               : false, // strict comparsion
+    //     tolerance            : 5,
+    //     antialiasingTolerance: 7,
+    //     ignoreAntialiasing   : true, // ignore antialising by default
+    //     ignoreCaret          : true // ignore caret by default
+    // }, function (error) {
+    //
+    // });
+}
 
 
 persistence_storage.init({
@@ -241,12 +304,19 @@ persistence_storage.init({
 
             console.log('\u0007');
             var personCounter = 1;
+            var reschedule    = false;
+            var appointmentID = false;
             console.log('Booking for         ');
             results.beneficiaries.forEach(function (beneficiary) {
                 console.log(`                ${personCounter}) : ${beneficiary.name}`);
                 beneficiariesMap.set(personCounter.toString(), beneficiary);
                 personCounter++;
-            })
+                if (beneficiary.hasOwnProperty('appointments') && beneficiary.appointments.length > 0) {
+                    if (reschedule === false) reschedule = true;
+                    appointmentID = beneficiary.appointments[0].appointment_id;
+                }
+            });
+
             console.log("                a) : All as group");
 
             var schema = {
@@ -320,6 +390,7 @@ persistence_storage.init({
                         const responseBody = resp.body;
                         const file         = './capcha.svg';
                         const svgData      = responseBody.captcha.replace(searchRegExp, replaceWith).replace(searchRegExp2, replaceWith2);
+                        // SaveCaptchaData(svgData);
                         fs.outputFile(file, svgData, err => {
                             sharp('./capcha.svg')
                                 .resize({height: 50})
@@ -342,15 +413,49 @@ persistence_storage.init({
                                         console.log('Center             : ' + sessionSelected.center_name);
                                         console.log(`Slot               : ${sessionSelected.date} [${selectedSlot}]`);
 
+                                        const scheduleURL = reschedule === false ? 'appointment/schedule' : 'appointment/reschedule';
+                                        console.log(scheduleURL);
+                                        if (reschedule === false) {
+                                            needle.head(`${baseUrl}/schedule`, {
+                                                open_timeout: 5000 // if we're not able to open a connection in 5 seconds, boom.
+                                            }, function (err, resp) {
 
-                                        needle.head(`${baseUrl}/appointment/schedule`, {
-                                            open_timeout: 5000 // if we're not able to open a connection in 5 seconds, boom.
-                                        }, function (err, resp) {
+                                                let post_options = {
+                                                    headers: Object.assign({}, postOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
+                                                };
+                                                needle.post(`${baseUrl}/appointment/schedule`, payload, post_options, function (err, resp, responseBody) {
+                                                    if (resp.statusCode !== 200) {
+                                                        if (responseBody.hasOwnProperty("error")) {
+                                                            console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody.error))));
+                                                        } else {
+                                                            console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody))));
+                                                        }
+                                                    } else {
+                                                        console.log('Booking Successful : ' + chalk.greenBright(chalk.bold(JSON.stringify(responseBody))));
+                                                        if (responseBody.hasOwnProperty('appointment_confirmation_no')) {
+                                                            const appointment_confirmation_no = responseBody.appointment_confirmation_no;
 
-                                            let post_options = {
+
+                                                        }
+                                                    }
+                                                });
+                                            })
+
+                                        } else {
+                                            // appointmentID
+
+                                            const reschedulePayload =
+                                                      {
+                                                          "appointment_id": appointmentID,
+                                                          "session_id"    : payload.session_id,
+                                                          "slot"          : payload.slot,
+                                                          "captcha"       : payload.captcha
+                                                      }
+                                            let post_options        = {
                                                 headers: Object.assign({}, postOptions.headers, {'If-None-Match': `W/"${crypto.randomBytes(5).toString('hex')}-${crypto.randomBytes(27).toString('hex')}`})
                                             };
-                                            needle.post(`${baseUrl}/appointment/schedule`, payload, post_options, function (err, resp, responseBody) {
+                                            console.log(reschedulePayload);
+                                            needle.post(`${baseUrl}/appointment/reschedule`, reschedulePayload, post_options, function (err, resp, responseBody) {
                                                 if (resp.statusCode !== 200) {
                                                     if (responseBody.hasOwnProperty("error")) {
                                                         console.log('Booking Failed     : ' + chalk.red(chalk.bold(JSON.stringify(responseBody.error))));
@@ -359,9 +464,13 @@ persistence_storage.init({
                                                     }
                                                 } else {
                                                     console.log('Booking Successful : ' + chalk.greenBright(chalk.bold(JSON.stringify(responseBody))));
+                                                    if (responseBody.hasOwnProperty('appointment_confirmation_no')) {
+                                                        const appointment_confirmation_no = responseBody.appointment_confirmation_no;
+                                                    }
                                                 }
                                             });
-                                        })
+
+                                        }
                                     });
                                 });
                         });
