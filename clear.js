@@ -116,6 +116,13 @@ function SaveCaptchaData(svgData, captchaString) {
                 .trim().toFile(`${dir}${captchaString.charAt(pos)}.png`)
                 .then(function (info) {
                     fs.unlinkSync(`${dir}letter${pos}-${id}.svg`);
+                    const Letter = captchaString.charAt(pos);
+                    Jimp.read(`${dir}${Letter}.png`).then(image => {
+                        const LetterHash = image.hash();
+                        console.log(Letter);
+                        console.log(LetterHash);
+                        const result = spawn.sync('catimg', ['-H', '50', `${dir}${Letter}.png`], {stdio: 'inherit'});
+                    });
                 });
         })
     }
