@@ -36,7 +36,7 @@ dotenv.config()
 const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
 const mobile_number = Number(process.env['mobile']);
 let district        = Number(process.env['district']);
-let vaccine_type    = process.env['type'];
+let vaccine_type    = process.env.hasOwnProperty(process.env['type']) ? process.env['type'] : "COVAXIN"; // COVAXIN is better
 let dose            = process.env.hasOwnProperty('dose') ? Number(process.env['dose']) : 1;
 
 process.argv.forEach(function (val, index, array) {
@@ -46,7 +46,18 @@ process.argv.forEach(function (val, index, array) {
     if (index === 3) {
         district = val;
     }
+    if (index === 4) { // Adding dose as another parameter.
+        dose = val;
+    }
 });
+
+if (isNaN(mobile_number) || isNaN(district)) {
+    console.log('Either Registered Mobile  or distict is not a number.');
+    console.log("Provided Phone number:" + chalk.redBright(chalk.bold(mobile_number)));
+    console.log("Provided distict number:" + chalk.redBright(chalk.bold(district)));
+    console.log("Read the README.md to setup the environments");
+    process.exit(0);
+}
 
 jwtCache.on("flush", function () {
     persistence_storage.get('jwt_' + mobile_number).then(cachedToken => {
@@ -302,7 +313,7 @@ persistence_storage.init({
                         beneficiaries: [],
                         slot         : selectedSlot,
                         captcha      : 'captcha',
-                        dose         : 1
+                        dose         : dose
                     }
 
                     if (result.selectBeneficiaries === 'all' || result.selectBeneficiaries === 'a') {
