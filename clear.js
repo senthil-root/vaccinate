@@ -27,7 +27,11 @@ const searchRegExp  = /\<path d.+?stroke.+?\>/g;
 const replaceWith   = '';
 const searchRegExp2 = /path fill=\".+?\"/g;
 const replaceWith2  = 'path fill="#000"';
-const lettersRegExp = /\<path fill.+?\>/g
+const lettersRegExp = /\<path fill.+?\>/g;
+
+const widthRegExp   = /width="[0-9]+?"/g;
+const heightRegExp  = /height="[0-9]+?"/g;
+const viewBoxRegExp = /viewBox="[0-9,]+?"/g;
 
 const lettersMap = new HashMap();
 
@@ -88,7 +92,7 @@ function SaveCaptchaData(svgData, captchaString) {
 
     for (let pos = 0; pos < lettersFound.length; pos++) {
         const letter         = lettersFound[pos];
-        const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="200" viewBox="0,0,150,50">${letter}</svg>`;
+        const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="50" viewBox="0,0,150,50">${letter}</svg>`;
         const letterPosition = getLetterPosition(letter.slice(0, 48));
         lettersMap.set(letterPosition, letterSVG);
     }
@@ -106,16 +110,16 @@ function SaveCaptchaData(svgData, captchaString) {
                 .normalise()
                 .negate()
                 .extend({
-                    top   : 40,
-                    bottom: 80,
-                    left  : 40,
-                    right : 40
+                    top   : 4,
+                    bottom: 8,
+                    left  : 4,
+                    right : 4
                 })
                 .flatten({background: '#FFFFFF'})
                 .png()
                 .trim().toFile(`${dir}${captchaString.charAt(pos)}.png`)
                 .then(function (info) {
-                    fs.unlinkSync(`${dir}letter${pos}-${id}.svg`);
+                    // fs.unlinkSync(`${dir}letter${pos}-${id}.svg`);
                     const Letter = captchaString.charAt(pos);
                     Jimp.read(`${dir}${Letter}.png`).then(image => {
                         const LetterHash = image.hash();
@@ -187,6 +191,9 @@ persistence_storage.init({
             const responseBody = resp.body;
             const file         = './capcha.svg';
             const svgData      = responseBody.captcha.replace(searchRegExp, replaceWith).replace(searchRegExp2, replaceWith2);
+            // .replace(widthRegExp, 'width="750"').replace(heightRegExp, 'height="250"')
+            // .replace(viewBoxRegExp, 'viewBox="0,0,750,250"');
+
             fs.outputFile(file, svgData, err => {
                 sharp('./capcha.svg')
                     .resize({height: 50})
