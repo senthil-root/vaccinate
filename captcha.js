@@ -61,7 +61,7 @@ const result = spawn.sync('catimg', ['-H', '50', 'capcha.jpeg'], {stdio: 'inheri
 
 for (let pos = 0; pos < lettersFound.length; pos++) {
     const letter         = lettersFound[pos];
-    const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="750" height="250" viewBox="0,0,150,50">${letter}</svg>`;
+    const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0,0,50,50">${letter}</svg>`;
     const letterPosition = getLetterPosition(letter.slice(0, 48));
     lettersMap.set(letterPosition, letterSVG);
 }
@@ -100,13 +100,13 @@ for (let pos = 0; pos < letters.length; pos++) {
                                 b      = parseInt(value, 2),
                                 result = (a ^ b) ^ (1 << 8) - 1;
                             if (255 === result) {
-                                console.log(chalk.bold(key + " : " + LetterHash + " : " + value + " = " + result));
+                                // console.log(chalk.bold(key + " : " + LetterHash + " : " + value + " = " + result));
                                 deductedCaptcha[pos] = key.replace('.png', '');
                                 console.log(chalk.bold(chalk.green(deductedCaptcha.join(''))));
                                 // console.log(JSON.stringify(lettersHashesMap));
                                 // console.log(JSON.stringify(hashes_letters));
                             } else {
-                                console.log(key + " : " + LetterHash + " : " + value + " = " + result);
+                                // console.log(key + " : " + LetterHash + " : " + value + " = " + result);
                             }
                             // var distance = Jimp.distance(image, value); // perceived distance
                             // var diff     = Jimp.diff(image, value); // pixel difference

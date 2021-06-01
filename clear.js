@@ -92,7 +92,7 @@ function SaveCaptchaData(svgData, captchaString) {
 
     for (let pos = 0; pos < lettersFound.length; pos++) {
         const letter         = lettersFound[pos];
-        const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="750" height="250" viewBox="0,0,150,50">${letter}</svg>`;
+        const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="50" viewBox="0,0,150,50">${letter}</svg>`;
         const letterPosition = getLetterPosition(letter.slice(0, 48));
         lettersMap.set(letterPosition, letterSVG);
     }
@@ -119,7 +119,7 @@ function SaveCaptchaData(svgData, captchaString) {
                 .png()
                 .trim().toFile(`${dir}${captchaString.charAt(pos)}.png`)
                 .then(function (info) {
-                    fs.unlinkSync(`${dir}letter${pos}-${id}.svg`);
+                    // fs.unlinkSync(`${dir}letter${pos}-${id}.svg`);
                     const Letter = captchaString.charAt(pos);
                     Jimp.read(`${dir}${Letter}.png`).then(image => {
                         const LetterHash = image.hash();
@@ -204,7 +204,7 @@ persistence_storage.init({
                     .jpeg({
                         quality: 100
                     })
-                    .withMetadata({density: 700})
+                    .withMetadata({density: 96})
                     .toFile("./capcha.jpeg")
                     .then(function (info) {
                         const result = spawn.sync('catimg', ['-H', '50', './capcha.jpeg'], {stdio: 'inherit'});
