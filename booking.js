@@ -33,6 +33,14 @@ let availabilty      = false;
 let availableSession = 0;
 dotenv.config()
 
+let opsys = process.platform;
+// darwin = "MacOS"; linux = "Linux"
+if (opsys === "win32" || opsys === "win64") {
+    console.log("Unsupported Operating System.");
+    process.exit(0);
+}
+
+
 const baseUrl       = 'https://cdn-api.co-vin.in/api/v2';
 const mobile_number = Number(process.env['mobile']);
 let district        = Number(process.env['district']);
@@ -344,7 +352,10 @@ persistence_storage.init({
                                 .withMetadata({density: 96})
                                 .toFile("./capcha.jpeg")
                                 .then(function (info) {
-                                    const result = spawn.sync('catimg', ['-H', '50', './capcha.jpeg'], {stdio: 'inherit'});
+                                    const catimgArgs = [];
+                                    if ("darwin" === opsys) catimgArgs.push('-t');
+                                    catimgArgs.push('-H', '48', './capcha.jpeg');
+                                    const result = spawn.sync('catimg', catimgArgs, {stdio: 'inherit'});
                                     prompt.get(schemaCaptcha, function (err, resultCaptcha) {
                                         payload.captcha = resultCaptcha.captcha;
                                         console.log(JSON.stringify(payload, null, 2));
