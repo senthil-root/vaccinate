@@ -27,6 +27,12 @@ const searchRegExp2 = /path fill=\".+?\"/g;
 const replaceWith2  = 'path fill="#000"';
 const lettersRegExp = /\<path fill.+?\>/g
 
+const lettersMap       = new HashMap();
+const lettersHashesMap = new HashMap();
+
+const dir = './letters/'
+
+
 let jwt = require('jwt-simple');
 
 const NodeCache = require("node-cache");
@@ -203,8 +209,21 @@ persistence_storage.init({
                     callback(null, []);
                 }
             });
+        },
+        hashes       : function (callback) {
+            const filenames      = fs.readdirSync('./letters').filter(fn => fn.endsWith('.png'));
+            const hashes_letters = [];
+            filenames.forEach((file) => {
+                Jimp.read(`./letters/${file}`).then(image => {
+                    hashes_letters[file] = image.hash(2);
+                    if (Object.keys(hashes_letters).length >= filenames.length) {
+                        callback(null, hashes_letters);
+                    }
+                })
+            });
         }
     }, function (err, results) {
+        console.log(results.hashes);
         var itemCounter      = 1;
         let available        = 0;
         let availableCenters = 0;
@@ -228,17 +247,19 @@ persistence_storage.init({
                 districts.add(center.district_name);
                 center.sessions.forEach(function (session) {
                     if (session["vaccine"] === vaccine_type && session["min_age_limit"] < 45) {
-                        centers.add(center.name);
+                        centers.add(center.name + ', ' + center.block_name);
                         dates.add(session["date"]);
-                        sessionsMap.set(center.name + '_' + session.date, {
+                        sessionsMap.set(center.name + ', ' + center.block_name + '_' + session.date, {
                             ...session, ...{
                                 center_id  : center_id,
-                                center_name: name
+                                center_name: name,
+                                block_name : center.block_name
                             }
                         });
                         const availabiltyForDose = dose === 2 ? session.available_capacity_dose2 : session.available_capacity_dose1;
                         if (availabiltyForDose > 0) available++;
-                        if (maxcharLength < center.name.length) maxcharLength = center.name.length;
+                        const center_key = center.name + ', ' + center.block_name;
+                        if (maxcharLength < center_key.length) maxcharLength = center_key.length;
                     }
                 });
             }
