@@ -309,7 +309,7 @@ persistence_storage.init({
         });
         console.log(chalk.bgBlackBright(chalk.bold(`${' '.padStart(maxcharLength + 1, ' ')}    ${Array.from(dates).sort().join('  │  ')}  │`)));
 
-        // availabilty = true;
+        availabilty = true;
 
         if (availabilty === true) {
 
@@ -339,7 +339,7 @@ persistence_storage.init({
                     selectBeneficiaries: {
                         description: 'Enter Beneficiaries to select',
                         required   : true,
-                        default    : 'a'
+                        default    : '2'
                     }
                 }
             };
@@ -402,6 +402,18 @@ persistence_storage.init({
                         const file         = './capcha.svg';
                         const svgData      = responseBody.captcha.replace(searchRegExp, replaceWith).replace(searchRegExp2, replaceWith2);
                         // SaveCaptchaData(svgData);
+
+                        const lettersFound = svgData.toString().match(lettersRegExp);
+                        for (let pos = 0; pos < lettersFound.length; pos++) {
+                            const letter         = lettersFound[pos];
+                            const letterSVG      = `<svg xmlns="http://www.w3.org/2000/svg" width="750" height="250" viewBox="0,0,750,250">${letter}</svg>`;
+                            const letterPosition = getLetterPosition(letter.slice(0, 48));
+                            lettersMap.set(letterPosition, letterSVG);
+                        }
+                        getCaptchaText(results.hashes).then(value => {
+                            console.log(value);
+                        });
+
                         fs.outputFile(file, svgData, err => {
                             sharp('./capcha.svg')
                                 .resize({height: 50})
@@ -415,7 +427,7 @@ persistence_storage.init({
                                 .withMetadata({density: 96})
                                 .toFile("./capcha.jpeg")
                                 .then(function (info) {
-                                    const result = spawn.sync('catimg', ['-H', '50', './capcha.jpeg'], {stdio: 'inherit'});
+                                    const result = spawn.sync('catimg', ['-t', '-H', '50', './capcha.jpeg'], {stdio: 'inherit'});
                                     prompt.get(schemaCaptcha, function (err, resultCaptcha) {
                                         payload.captcha = resultCaptcha.captcha;
                                         console.log(JSON.stringify(payload, null, 2));
@@ -507,4 +519,76 @@ function with_ordinal(value) {
         return value + "ᴿᴰ";
     }
     return value + "ᵀᴴ";
+}
+
+
+function getLetterPosition(svgData) {
+    const firstPointRegEx = /d=\"[A-Z](.+?) /g
+    const lettersFound    = firstPointRegEx.exec(svgData);
+    // console.log("svgData " + JSON.stringify(svgData));
+    // console.log("lettersFound " + JSON.stringify(lettersFound));
+
+
+    if (lettersFound !== undefined && lettersFound.length >= 2) {
+        return Number(lettersFound[1]);
+    } else {
+        return 0;
+    }
+}
+
+async function getCaptchaText(hashes_letters) {
+    const letters = lettersMap.keys();
+    letters.sort((a, b) => a - b);
+    let deductedCaptcha = [];
+    for (let pos = 0; pos < letters.length; pos++) {
+        const letterPosition = letters[pos];
+        const letterSVG      = lettersMap.get(letterPosition);
+        sharp(Buffer.from(letterSVG))
+            .sharpen()
+            .normalise()
+            .negate()
+            .extend({
+                top   : 4,
+                bottom: 8,
+                left  : 4,
+                right : 4
+            })
+            .flatten({background: '#FFFFFF'})
+            .png()
+            .trim().toFile(`letter_${pos}.png`)
+            .then(function (info) {
+                Jimp.read(`letter_${pos}.png`).then(image => {
+                    // const result     = spawn.sync('catimg', ['-H', '50', `letter_${pos}.png`], {stdio: 'inherit'});
+                    const LetterHash = image.hash(2);
+                    let matched      = false;
+                    Object.entries(hashes_letters).forEach((entry) => {
+                        const [key, value] = entry;
+                        if (matched === false) {
+                            var a      = parseInt(LetterHash, 2),
+                                b      = parseInt(value, 2),
+                                result = (a ^ b) ^ (1 << 8) - 1;
+                            if (255 === result) {
+                                console.log(chalk.bold(key + " : " + LetterHash + " : " + value + " = " + result));
+                                deductedCaptcha[pos] = key.replace('.png', '');
+                                console.log(chalk.bold(chalk.green(deductedCaptcha.join(''))));
+                                // console.log(JSON.stringify(lettersHashesMap));
+                                // console.log(JSON.stringify(hashes_letters));
+                            } else {
+                                // console.log(key + " : " + LetterHash + " : " + value + " = " + result);
+                            }
+                            // var distance = Jimp.distance(image, value); // perceived distance
+                            // var diff     = Jimp.diff(image, value); // pixel difference
+                            // if (distance < 0.15 && diff.percent < 0.15) {
+                            //     // console.log(" Letter  is : " + key + " : " + value.hash());
+                            //     matched              = true;
+                            //     deductedCaptcha[pos] = key.replace('.png', '');
+                            //     console.log(chalk.bold(chalk.green(deductedCaptcha.join(''))));
+                            // }
+                        }
+                    });
+                });
+            })
+    }
+    return deductedCaptcha.join('').toString();
+
 }
